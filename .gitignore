@@ -15,7 +15,8 @@ curl-test.txt
 
 # Not for sharing
 docs/
-formation_sut/data/
+formation_sut/data/*
+!formation_sut/data/test_cases.jsonl
 
 # Editor / OS
 .vscode/
