@@ -1,0 +1,26 @@
+{
+  "default": "local-lmstudio-gemma",
+  "models": {
+    "local-lmstudio-gemma": {
+      "base_url": "http://localhost:1234/v1",
+      "api_key": "lm-studio",
+      "model": "google/gemma-4-e4b",
+      "temperature": 0.0,
+      "timeout_seconds": 60
+    },
+    "remote-scnet-deepseek": {
+      "base_url": "https://api.scnet.cn/api/llm/v1",
+      "api_key": "YOUR_API_KEY",
+      "model": "DeepSeek-V4-Flash",
+      "temperature": 0.0,
+      "timeout_seconds": 60
+    },
+    "remote-scnet-minimax": {
+      "base_url": "https://api.scnet.cn/api/llm/v1",
+      "api_key": "YOUR_API_KEY",
+      "model": "MiniMax-M3",
+      "temperature": 0.0,
+      "timeout_seconds": 60
+    }
+  }
+}

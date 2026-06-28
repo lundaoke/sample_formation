@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>智能编队 SUT 历史结果</title>
+<style>
+  body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 0; padding: 20px; background: #f4f5f7; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  a.nav-link { font-size: 13px; }
+  section.panel { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; margin-bottom: 18px; }
+  #filter-input { margin-bottom: 10px; padding: 4px 8px; width: 280px; }
+  details.record { border: 1px solid #e3e3e3; border-radius: 4px; margin-bottom: 8px; padding: 6px 10px; background: #fafafa; }
+  details.record > summary { cursor: pointer; padding: 4px 0; }
+  .timestamp { color: #888; font-size: 12px; margin-right: 8px; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 12px; margin-left: 6px; }
+  .badge.over { background: #fdecea; color: #b00020; }
+  .badge.ok { background: #eef6ff; color: #1a5fb4; }
+  .badge.failed { background: #fdecea; color: #b00020; }
+  .error-message { color: #b00020; font-size: 13px; margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; }
+  th { background: #f0f0f0; }
+  pre.raw-output { white-space: pre-wrap; word-break: break-all; background: #f7f7f7; border: 1px solid #e3e3e3; padding: 8px; font-size: 12px; max-height: 300px; overflow: auto; }
+  .note { color: #888; font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>智能编队 SUT 历史结果 <a class="nav-link" href="/">← 返回任务页</a></h1>
+
+<section class="panel">
+  <input id="filter-input" type="text" placeholder="按任务描述关键字过滤">
+  <div id="history-wrap">加载中...</div>
+</section>
+
+<script>
+let allRecords = [];
+
+function renderRecords(records) {
+  const wrap = document.getElementById('history-wrap');
+  if (records.length === 0) {
+    wrap.innerHTML = '<div class="note">暂无历史记录。</div>';
+    return;
+  }
+  wrap.innerHTML = records.map((r, idx) => {
+    const badge = r.error
+      ? '<span class="badge failed">生成失败</span>'
+      : (r.over_budget
+        ? '<span class="badge over">超支</span>'
+        : '<span class="badge ok">未超支</span>');
+    const unitRows = r.units.map(u => `
+      <tr><td>${u.unit_name}（${u.unit_id}）</td><td>${u.count}</td></tr>
+    `).join('');
+    const errorBlock = r.error
+      ? `<div class="error-message">${escapeHtml(r.error)}</div>`
+      : '';
+    return `
+      <details class="record">
+        <summary>
+          <span class="timestamp">${r.timestamp}</span>
+          ${escapeHtml(r.task_description)}
+          ${badge}
+        </summary>
+        ${errorBlock}
+        <table>
+          <tr><th>预算上限</th><td>${r.budget_limit}</td></tr>
+          <tr><th>实际花费</th><td>${r.total_cost}</td></tr>
+        </table>
+        <table>
+          <tr><th>单位</th><th>数量</th></tr>
+          ${unitRows}
+        </table>
+        <details>
+          <summary>大模型原始输出</summary>
+          <pre class="raw-output" id="raw-${idx}"></pre>
+        </details>
+      </details>`;
+  }).join('');
+
+  records.forEach((r, idx) => {
+    document.getElementById(`raw-${idx}`).textContent = r.raw_llm_output;
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function loadHistory() {
+  const res = await fetch('/history');
+  allRecords = await res.json();
+  renderRecords(allRecords);
+}
+
+document.getElementById('filter-input').addEventListener('input', (e) => {
+  const kw = e.target.value.trim();
+  const filtered = kw
+    ? allRecords.filter(r => r.task_description.includes(kw))
+    : allRecords;
+  renderRecords(filtered);
+});
+
+loadHistory();
+</script>
+</body>
+</html>

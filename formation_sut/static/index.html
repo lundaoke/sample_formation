@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>智能编队 SUT 演示界面</title>
+<style>
+  body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 0; padding: 20px; background: #f4f5f7; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  section.panel { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; margin-bottom: 18px; }
+  section.panel > h2 { font-size: 16px; margin: 0 0 10px 0; }
+  details { border: 1px solid #e3e3e3; border-radius: 4px; margin-bottom: 8px; padding: 6px 10px; background: #fafafa; }
+  details > summary { cursor: pointer; font-weight: bold; padding: 4px 0; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; }
+  th { background: #f0f0f0; }
+  .note { color: #888; font-size: 12px; margin-top: 6px; }
+  textarea { width: 100%; min-height: 90px; box-sizing: border-box; font-size: 14px; padding: 8px; }
+  button { margin-top: 8px; padding: 6px 18px; font-size: 14px; cursor: pointer; }
+  select, input[type=number] { padding: 4px 8px; font-size: 13px; }
+  .field-row { margin: 8px 0; display: flex; align-items: center; gap: 8px; }
+  .field-row label { font-weight: bold; min-width: 90px; }
+  .error { color: #b00020; white-space: pre-wrap; }
+  .unit-card { border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-bottom: 10px; background: #fcfcfc; }
+  .unit-card h3 { margin: 0; font-size: 14px; }
+  .summary-box { border-radius: 4px; padding: 10px; margin-top: 10px; }
+  .summary-box.ok { background: #eef6ff; border: 1px solid #cfe3fb; }
+  .summary-box.over { background: #fdecea; border: 1px solid #f5c2c0; color: #b00020; }
+  pre.raw-output { white-space: pre-wrap; word-break: break-all; background: #f7f7f7; border: 1px solid #e3e3e3; padding: 8px; font-size: 12px; max-height: 300px; overflow: auto; }
+  a.nav-link { font-size: 13px; margin-left: 12px; }
+</style>
+</head>
+<body>
+<h1>智能编队 SUT 演示界面 <a class="nav-link" href="/history-page">查看历史结果 →</a></h1>
+
+<section class="panel">
+  <h2>配置显示区</h2>
+
+  <details id="llm-details" open>
+    <summary>连接的大模型</summary>
+    <div class="field-row">
+      <label for="llm-select">选择配置</label>
+      <select id="llm-select"></select>
+    </div>
+    <div id="llm-config">加载中...</div>
+  </details>
+
+  <details id="units-details" open>
+    <summary>作战单位库</summary>
+    <div id="units-table-wrap">加载中...</div>
+    <div class="note">注：军费消耗为单价，提交任务时设定的预算上限是 Σ(单价 × 数量) 的总和上限。</div>
+  </details>
+</section>
+
+<section class="panel">
+  <h2>任务描述区</h2>
+  <textarea id="task-input" placeholder="请输入一段任务描述，例如：组织一支车队完成物资运输，并派出步兵分队提供沿途护卫"></textarea>
+  <div class="field-row">
+    <label for="budget-input">预算上限</label>
+    <input id="budget-input" type="number" min="1" value="300">
+  </div>
+  <button id="submit-btn">生成编队方案</button>
+  <div id="submit-status"></div>
+</section>
+
+<section class="panel">
+  <h2>编队结果输出区</h2>
+  <div id="result-area">尚未生成编队方案。</div>
+</section>
+
+<script>
+let unitsById = {};
+let llmConfigs = {};
+
+async function loadConfig() {
+  const res = await fetch('/config');
+  const cfg = await res.json();
+  llmConfigs = cfg.models;
+  const select = document.getElementById('llm-select');
+  select.innerHTML = Object.keys(cfg.models).map(name =>
+    `<option value="${name}" ${name === cfg.default ? 'selected' : ''}>${name}</option>`
+  ).join('');
+  renderLlmDetail(select.value);
+  select.addEventListener('change', () => renderLlmDetail(select.value));
+}
+
+function renderLlmDetail(name) {
+  const c = llmConfigs[name];
+  document.getElementById('llm-config').innerHTML = `
+    <table>
+      <tr><th>base_url</th><td>${c.base_url}</td></tr>
+      <tr><th>model</th><td>${c.model}</td></tr>
+      <tr><th>temperature</th><td>${c.temperature}</td></tr>
+      <tr><th>timeout_seconds</th><td>${c.timeout_seconds}</td></tr>
+      <tr><th>api_key</th><td>${c.api_key_masked}</td></tr>
+    </table>`;
+}
+
+async function loadUnits() {
+  const res = await fetch('/units');
+  const units = await res.json();
+  unitsById = {};
+  units.forEach(u => { unitsById[u.id] = u; });
+  const rows = units.map(u => `
+    <tr>
+      <td>${u.category}</td><td>${u.name}</td>
+      <td>${u.attributes['灵活性']}</td>
+      <td>${u.attributes['机动性']}</td>
+      <td>${u.attributes['隐蔽性']}</td>
+      <td>${u.attributes['战斗威力']}</td>
+      <td>${u.cost}</td>
+    </tr>`).join('');
+  document.getElementById('units-table-wrap').innerHTML = `
+    <table>
+      <tr><th>类别</th><th>名称</th><th>灵活性</th><th>机动性</th><th>隐蔽性</th><th>战斗威力</th><th>军费消耗</th></tr>
+      ${rows}
+    </table>`;
+}
+
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const taskDescription = document.getElementById('task-input').value.trim();
+  const budgetLimit = parseInt(document.getElementById('budget-input').value, 10);
+  const llmConfigName = document.getElementById('llm-select').value;
+  const statusEl = document.getElementById('submit-status');
+  const resultEl = document.getElementById('result-area');
+  if (!taskDescription) {
+    statusEl.innerHTML = '<span class="error">请输入任务描述。</span>';
+    return;
+  }
+  if (!budgetLimit || budgetLimit <= 0) {
+    statusEl.innerHTML = '<span class="error">预算上限必须是正整数。</span>';
+    return;
+  }
+  statusEl.textContent = '正在生成编队方案，请稍候...';
+  resultEl.innerHTML = '';
+  try {
+    const res = await fetch('/formation/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_description: taskDescription,
+        budget_limit: budgetLimit,
+        llm_config_name: llmConfigName,
+      })
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      statusEl.innerHTML = '';
+      resultEl.innerHTML = `<div class="error">生成失败（HTTP ${res.status}）：${body.detail || JSON.stringify(body)}</div>`;
+      return;
+    }
+    statusEl.textContent = '';
+    renderResult(body);
+  } catch (err) {
+    statusEl.innerHTML = '';
+    resultEl.innerHTML = `<div class="error">请求失败：${err}</div>`;
+  }
+});
+
+function renderResult(body) {
+  const unitsHtml = body.units.map(u => {
+    const detail = unitsById[u.unit_id];
+    const attrText = detail
+      ? `灵活性${detail.attributes['灵活性']}/机动性${detail.attributes['机动性']}/隐蔽性${detail.attributes['隐蔽性']}/战斗威力${detail.attributes['战斗威力']}`
+      : '';
+    return `
+      <div class="unit-card">
+        <h3>${u.unit_name}（${u.unit_id}） × ${u.count}　${attrText}</h3>
+      </div>`;
+  }).join('');
+
+  const summaryClass = body.over_budget ? 'over' : 'ok';
+  const summaryHtml = `
+    <div class="summary-box ${summaryClass}">
+      <strong>预算汇总</strong><br>
+      预算上限：${body.budget_limit}<br>
+      实际花费：${body.total_cost}<br>
+      是否超支：${body.over_budget ? '超支' : '未超支'}
+    </div>`;
+
+  const rawOutputHtml = `
+    <details>
+      <summary>大模型原始输出</summary>
+      <pre class="raw-output"></pre>
+    </details>`;
+
+  document.getElementById('result-area').innerHTML = `${unitsHtml}${summaryHtml}${rawOutputHtml}`;
+  document.querySelector('#result-area pre.raw-output').textContent = body.raw_llm_output;
+}
+
+loadConfig();
+loadUnits();
+</script>
+</body>
+</html>
